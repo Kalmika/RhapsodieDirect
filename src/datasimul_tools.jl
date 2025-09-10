@@ -13,6 +13,23 @@
 
 #------------------------------------------------
 
+function data_simulator_dual_component(Good_Pix::AbstractArray{T,2},
+                        F::Vector{FieldTransformOperator{T}}, 
+                        S_disk::PolarimetricMap, S_star::PolarimetricMap; A_disk::Mapping = LazyAlgebra.Id, ro_noise=8.5) where {T <:AbstractFloat}
+   
+    M=zeros(size(Good_Pix)[1],size(Good_Pix)[2],length(F))
+    H_disk = DirectModel(size(S_disk), size(M), S_disk.parameter_type, F, A_disk)
+	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
+    M = H_disk*S_disk + H_star*S_star
+    
+    
+    VAR=max.(M,zero(eltype(M))) .+ro_noise^2
+	W=Good_Pix ./ VAR
+	D=data_generator(M, W)
+	
+	return D,W
+end
+
 function data_simulator(Good_Pix::AbstractArray{T,2},
                         F::Vector{FieldTransformOperator{T}}, 
                         S::PolarimetricMap; A::Mapping = LazyAlgebra.Id, ro_noise=8.5) where {T <:AbstractFloat}

@@ -17,6 +17,7 @@ module RhapsodieDirect
         chi_square!,
         convert,
         data_generator,
+        data_simulator_dual_component,
         data_simulator,
         Dataset,
         DatasetParameters,

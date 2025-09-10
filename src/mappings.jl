@@ -109,45 +109,46 @@ function apply!(α::Real,
                 β::Real,
                 dst::AbstractArray{T,3}) where {T<:AbstractFloat}
     @assert β==0 && α==1
-    @assert size(src) == R.cols
-    @assert size(dst) == R.rows
-    x = zeros(R.cols[1],R.cols[2], length(src))
+    @assert size(src) == R.cols          # Vérification taille objet
+    @assert size(dst) == R.rows          # Vérification taille données
+    
+    # Étape 1: Application du flou (PSF/convolution) à chaque paramètre de Stokes
+    x = zeros(R.cols[1],R.cols[2], length(src))  # Buffer temporaire
     @inbounds for (i,map) in enumerate(get_stokes(src))
-        if i>1
-            setindex!(x,R.A*map,:,:,i)
-        else
-            setindex!(x,map,:,:,i)
-        end
+        setindex!(x,R.A*map,:,:,i)       # x[:,:,i] = R.A * map (convolution par la PSF)
     end
     
-    @inbounds for k=1:length(R.TR)	 
-        apply!(view(dst,:,:,k),R.TR[k],x)   
-	end
+    # Étape 2: Application des transformations géométriques par frame
+    @inbounds for k=1:length(R.TR)       # Pour chaque observation/frame
+        apply!(view(dst,:,:,k),R.TR[k],x)  # Transformation géométrique + polarisation
+    end
     return dst
 end
 
+# ADJOINT DU MODÈLE DIRECT : Données observées → PolarimetricMap (rétroprojection)
+# Processus inverse : Données → Rétroprojection géométrique → Déconvolution → Objet reconstruit
 function apply!(α::Real,
                 ::Type{LazyAlgebra.Adjoint},
                 R::DirectModel{T},
-                src::AbstractArray{T,3},
+                src::AbstractArray{T,3},        # Données observées (entrée)
                 scratch::Bool,
                 β::Real,
-                dst::PolarimetricMap{T}) where {T<:AbstractFloat}
+                dst::PolarimetricMap{T}) where {T<:AbstractFloat}  # Carte polarimétrique reconstruite (sortie)
     @assert β==0 && α==1
     @assert size(src) == R.rows
     @assert size(dst) == R.cols
-    x = zeros(R.cols[1],R.cols[2], length(dst))
-    y = zeros(R.cols[1],R.cols[2], length(dst))
+    x = zeros(R.cols[1],R.cols[2], length(dst))  # Accumulation finale
+    y = zeros(R.cols[1],R.cols[2], length(dst))  # Buffer temporaire
+    
+    # Étape 1: Rétroprojection géométrique de toutes les observations
     @inbounds for k=1:length(R.TR)	 
-        vmul!(y, R.TR[k]', view(src,:,:,k))
-        vupdate!(x,1.,y)   
+        vmul!(y, R.TR[k]', view(src,:,:,k)) # Adjoint des transformations géométriques
+        vupdate!(x,1.,y)  # Accumulation des contributions
 	end
+    
+    # Étape 2: Déconvolution (adjoint de l'opérateur de flou) pour chaque Stokes
     @inbounds for (i,map) in enumerate(get_stokes(dst))
-        if i>1
-        apply!(map,R.A', x[:,:,i])
-        else
-        vcopy!(map,x[:,:,i])
-        end
+        apply!(map,R.A', x[:,:,i]) # Déconvolution par l'adjoint de la PSF
     end
     rebuild("stokes",dst)
     return dst;

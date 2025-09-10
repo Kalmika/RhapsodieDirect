@@ -90,7 +90,7 @@ struct DirectModel{T<:AbstractFloat,
     parameter_type::S
     TR::PerFrameTransformsType               
     A::GlobalTransformsType             
-end                   
+end  
 
 DirectModel(cols::ColType, 
             rows::RowType, 
