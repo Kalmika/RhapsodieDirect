@@ -36,7 +36,10 @@ module RhapsodieDirect
         set_default_polarisation_coefficients,
         set_fft_operator,
         vcreate,
-        write
+        write,
+        #  Noise models
+        NoiseModel, DiagonalNoise, CorrelatedNoise, create_noise_model, generate_noise, validate_noise_model,
+        generate_correlated_noise
 
     import Base: +, -, *, /, ==, getindex, setindex!, read, write, convert, copy, fill!
 
@@ -46,6 +49,7 @@ module RhapsodieDirect
     using LinearInterpolators
     using LazyAlgebra
     import LazyAlgebra: Mapping, vcreate, vcopy, apply!
+    using FFTW
     using EasyFITS
     
     include("types.jl")
@@ -55,5 +59,6 @@ module RhapsodieDirect
     include("utils.jl")
     include("loaders.jl")
     include("datasimul_tools.jl")
+    include("noise_models.jl")
 end
 

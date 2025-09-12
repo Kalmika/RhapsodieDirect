@@ -117,3 +117,44 @@ struct Dataset{T<:AbstractFloat,
         direct_model::H
 end
 
+"""
+    NoiseModel
+
+Abstract type for noise modeling approaches.
+"""
+abstract type NoiseModel end
+
+"""
+    DiagonalNoise <: NoiseModel
+
+Classical diagonal noise model using independent Gaussian noise.
+Compatible with existing weight-based approach.
+"""
+struct DiagonalNoise <: NoiseModel end
+
+"""
+    CorrelatedNoise <: NoiseModel
+
+Spatially correlated noise model using power spectral density P(k).
+Based on filtered Gaussian noise in Fourier domain.
+
+* `A` - Amplitude parameter  
+* `σ²` - Spectral width parameter
+* `N` - Image size (assuming square images)
+* `P` - Pre-computed P(k) matrix
+* `sqrt_P` - Pre-computed sqrt(P(k)) for efficiency
+"""
+struct CorrelatedNoise{T<:AbstractFloat} <: NoiseModel
+    A::T
+    σ²::T  
+    N::Int
+    P::Matrix{T}
+    sqrt_P::Matrix{T}
+    
+    function CorrelatedNoise(A::T, σ²::T, N::Int) where {T<:AbstractFloat}
+        P = compute_power_spectrum(A, σ², N)
+        sqrt_P = sqrt.(P)
+        new{T}(A, σ², N, P, sqrt_P)
+    end
+end
+

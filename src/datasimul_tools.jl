@@ -9,7 +9,7 @@
 #
 #
 # Copyright (c) 2017-2021 Laurence Denneulin (see LICENCE.md)
-
+#
 
 #------------------------------------------------
 
@@ -22,23 +22,7 @@ function data_simulator_dual_component(Good_Pix::AbstractArray{T,2},
 	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
     M = H_disk*S_disk + H_star*S_star
     
-    
-    VAR=max.(M,zero(eltype(M))) .+ro_noise^2
-	W=Good_Pix ./ VAR
-	D=data_generator(M, W)
-	
-	return D,W
-end
-
-function data_simulator(Good_Pix::AbstractArray{T,2},
-                        F::Vector{FieldTransformOperator{T}}, 
-                        S::PolarimetricMap; A::Mapping = LazyAlgebra.Id, ro_noise=8.5) where {T <:AbstractFloat}
-   
-    M=zeros(size(Good_Pix)[1],size(Good_Pix)[2],length(F))
-    H = DirectModel(size(S), size(M),S.parameter_type,F,A)
-    M = H*S
-    
-    
+    println("hellox!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     VAR=max.(M,zero(eltype(M))) .+ro_noise^2
 	W=Good_Pix ./ VAR
 	D=data_generator(M, W)
@@ -56,6 +40,130 @@ function data_generator(model::AbstractArray{T,N}, weights::AbstractArray{T,N};b
         if w >0            
             data[i] = model[i]  +randn()/sqrt(w)    
         elseif w ==0 
+            data[i]=bad;
+        end
+    end
+    return data
+end
+
+
+"""
+    data_simulator_dual_component_flexible(BadPixMap, field_transforms, S_disk, S_star, noise_model; A_disk=nothing)
+
+Flexible dual component simulator for disk + star systems.
+"""
+function data_simulator_dual_component_bis(
+    Good_Pix::AbstractArray{T,2},
+    F::Vector{FieldTransformOperator{T}}, 
+    S_disk::PolarimetricMap, 
+    S_star::PolarimetricMap;
+    noise_model::NoiseModel = DiagonalNoise(),
+    A_disk::Mapping = LazyAlgebra.Id,
+    ro_noise=8.5) where {T <:AbstractFloat}
+
+    println("Good_Pix size: ", size(Good_Pix))
+    println("Number of field transforms: ", length(F))
+    println("S_disk size: ", size(S_disk))
+    println("S_star size: ", size(S_star))
+    println("Noise model type: ", typeof(noise_model))
+    println("A_disk type: ", typeof(A_disk))
+    println("ro_noise value: ", ro_noise)
+    
+    if isa(noise_model, DiagonalNoise)
+        return dsdc_diagonal_noise(Good_Pix, F, S_disk, S_star; A_disk=A_disk, ro_noise=ro_noise)        
+    elseif isa(noise_model, CorrelatedNoise)
+        return dsdc_correlated_noise(Good_Pix, F, S_disk, S_star, noise_model; A_disk=A_disk, ro_noise=ro_noise)
+    else
+        error("Unsupported noise model type: $(typeof(noise_model))")
+    end
+
+end
+
+"""  
+Data simulator dual component (disk + star) with diagonal noise.
+"""
+function dsdc_diagonal_noise(
+    Good_Pix::AbstractArray{T,2},
+    F::Vector{FieldTransformOperator{T}}, 
+    S_disk::PolarimetricMap, 
+    S_star::PolarimetricMap; 
+    A_disk::Mapping = LazyAlgebra.Id, 
+    ro_noise=8.5) where {T <:AbstractFloat}
+   
+    M=zeros(size(Good_Pix)[1],size(Good_Pix)[2],length(F))
+    H_disk = DirectModel(size(S_disk), size(M), S_disk.parameter_type, F, A_disk)
+	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
+    data = H_disk*S_disk + H_star*S_star
+
+    weights = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
+	return data, weights
+end
+
+"""  
+Data simulator dual component (disk + star) with correlated noise.
+"""
+function dsdc_correlated_noise(
+    Good_Pix::AbstractArray{T,2},
+    F::Vector{FieldTransformOperator{T}}, 
+    S_disk::PolarimetricMap, 
+    S_star::PolarimetricMap,
+    noise_model::CorrelatedNoise; 
+    A_disk::Mapping = LazyAlgebra.Id, 
+    ro_noise=8.5) where {T <:AbstractFloat}
+   
+    M=zeros(size(Good_Pix)[1],size(Good_Pix)[2],length(F))
+    H_disk = DirectModel(size(S_disk), size(M), S_disk.parameter_type, F, A_disk)
+	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
+
+    correlated_noise = generate_correlated_noise(noise_model)
+    data = H_disk*S_disk + H_star*(S_star+correlated_noise)
+    weights = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
+	return data, weights
+end
+
+function data_simulator(Good_Pix::AbstractArray{T,2},
+                        F::Vector{FieldTransformOperator{T}}, 
+                        S::PolarimetricMap; A::Mapping = LazyAlgebra.Id, ro_noise=8.5) where {T <:AbstractFloat}
+   
+    data=zeros(size(Good_Pix)[1],size(Good_Pix)[2],length(F))
+    H = DirectModel(size(S), size(data),S.parameter_type,F,A)
+    data = H*S
+    weights = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
+	return data, weights
+end
+
+function compute_weights_and_add_noise!(data::AbstractArray{T,3}, 
+                                      good_pixels::AbstractArray{T,2}, 
+                                      ro_noise::Real) where {T<:AbstractFloat}
+    # Compute variance: max(signal, 0) + readout_noise²
+    VAR = max.(data, zero(eltype(data))) .+ ro_noise^2    
+    # Broadcast good_pixels across the third dimension to match data dimensions
+    good_pixels_3d = repeat(good_pixels, 1, 1, size(data, 3))
+    # Compute weights: good_pixels / variance
+    weights = good_pixels_3d ./ VAR    
+    add_noise_with_masking!(data, weights)
+    
+    return weights
+end
+
+function compute_weights_and_add_noise!(data::AbstractArray{T,N}, 
+                                      good_pixels::AbstractArray{T,N}, 
+                                      ro_noise::Real) where {T<:AbstractFloat,N}
+    # Compute variance: max(signal, 0) + readout_noise²
+    VAR = max.(data, zero(eltype(data))) .+ ro_noise^2    
+    # Compute weights: good_pixels / variance
+    weights = good_pixels ./ VAR    
+    add_noise_with_masking!(data, weights)
+    
+    return weights
+end
+
+function add_noise_with_masking!(data::AbstractArray{T,N}, weights::AbstractArray{T,N};bad=zero(T)) where {T<:AbstractFloat,N}   
+    @inbounds for i in eachindex(data, weights)
+        (isfinite(weights[i]) && weights[i] >= 0 ) || error("invalid weights")
+        if weights[i] >0            
+            data[i] += randn()/sqrt(weights[i])    
+        elseif weights[i] ==0 
             data[i]=bad;
         end
     end

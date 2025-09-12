@@ -7,6 +7,10 @@ version = "0.1.0"
 EasyFITS = "a977f4a2-36a7-4172-89e7-19c2726f82e5"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 InterpolationKernels = "16730964-a2ec-11e9-36fa-47a4f82bfac6"
-LinearInterpolators = "2fc109c4-9d77-11e9-32ff-e5c650334c16"
 LazyAlgebra = "aeaa251e-9d76-11e9-311b-83636bf44738"
+LinearInterpolators = "2fc109c4-9d77-11e9-32ff-e5c650334c16"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 TwoDimensional = "1907e7ba-7586-4310-a2ba-dd01462aeb50"
+
+[compat]
+Plots = "1.40.19"

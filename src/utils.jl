@@ -117,6 +117,16 @@ function set_fft_operator(object_parameters::ObjectParameters,
 	return FFT, resized_psf_map
 end
 
+
+function compute_mean(x) 
+    return sum(x) / length(x)
+end
+
+function compute_variance(x)
+    μ = compute_mean(x)
+    return sum((xi - μ)^2 for xi in x) / (length(x) - 1)
+end
+
 #TODO: Refactore Cropping and Padding operators using LazyAlgebra Cropping mapping.      
 
 #=      

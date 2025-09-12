@@ -11,7 +11,6 @@ Pkg.activate(".")
 using RhapsodieDirect
 using InterpolationKernels
 using Plots
-using LinearAlgebra
 
 println("Test simple des transformations d'interpolation...")
 
