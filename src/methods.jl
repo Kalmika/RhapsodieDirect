@@ -9,7 +9,7 @@ function chi_square!(x::PolarimetricMap{T},
     
     fill!(g,zero(T))
     res = D.direct_model*x - D.data;
-    wres = D.weights .* res
+    wres = D.weights_op .* res
     apply!(g, D.direct_model', wres)
     
     return vdot(res,wres)
@@ -23,7 +23,7 @@ function chi_square!(x::AbstractArray{T,3},
     fill!(g,zero(T))
     X=PolarimetricMap("stokes",x)
     res = D.direct_model*X - D.data;
-    wres = D.weights .* res
+    wres = D.weights_op .* res
     rwr = D.direct_model' * wres
     g .+= cat(rwr.I, rwr.Q, rwr.U, dims=3)
     return vdot(res,wres)

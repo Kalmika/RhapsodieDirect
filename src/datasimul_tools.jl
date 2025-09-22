@@ -95,8 +95,8 @@ function dsdc_diagonal_noise(
 	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
     data = H_disk*S_disk + H_star*S_star
 
-    weights = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
-	return data, weights
+    weights_operator = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
+	return data, weights_operator
 end
 
 """  
@@ -116,9 +116,11 @@ function dsdc_correlated_noise(
 	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
 
     correlated_noise = generate_correlated_noise(noise_model)
-    data = H_disk*S_disk + H_star*(S_star+correlated_noise)
-    weights = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
-	return data, weights
+    S_star_correlated_noise = PolarimetricMap("intensities",  S_star.Iu .+ correlated_noise, zero(correlated_noise), zero(correlated_noise)) 
+    data = H_disk*S_disk + H_star*S_star_correlated_noise
+
+    weights_operator = FourierPrecisionOperator(noise_model, Good_Pix)
+	return data, weights_operator
 end
 
 function data_simulator(Good_Pix::AbstractArray{T,2},
@@ -132,30 +134,16 @@ function data_simulator(Good_Pix::AbstractArray{T,2},
 	return data, weights
 end
 
-function compute_weights_and_add_noise!(data::AbstractArray{T,3}, 
-                                      good_pixels::AbstractArray{T,2}, 
-                                      ro_noise::Real) where {T<:AbstractFloat}
-    # Compute variance: max(signal, 0) + readout_noise²
-    VAR = max.(data, zero(eltype(data))) .+ ro_noise^2    
-    # Broadcast good_pixels across the third dimension to match data dimensions
-    good_pixels_3d = repeat(good_pixels, 1, 1, size(data, 3))
-    # Compute weights: good_pixels / variance
-    weights = good_pixels_3d ./ VAR    
-    add_noise_with_masking!(data, weights)
-    
-    return weights
-end
-
-function compute_weights_and_add_noise!(data::AbstractArray{T,N}, 
-                                      good_pixels::AbstractArray{T,N}, 
-                                      ro_noise::Real) where {T<:AbstractFloat,N}
+function compute_weights_and_add_noise!(data::AbstractArray{T,N1}, 
+                                      good_pixels::AbstractArray{T,N2}, 
+                                      ro_noise::Real) where {T<:AbstractFloat,N1,N2}
     # Compute variance: max(signal, 0) + readout_noise²
     VAR = max.(data, zero(eltype(data))) .+ ro_noise^2    
     # Compute weights: good_pixels / variance
     weights = good_pixels ./ VAR    
     add_noise_with_masking!(data, weights)
-    
-    return weights
+
+    return DiagonalWeights(weights)
 end
 
 function add_noise_with_masking!(data::AbstractArray{T,N}, weights::AbstractArray{T,N};bad=zero(T)) where {T<:AbstractFloat,N}   

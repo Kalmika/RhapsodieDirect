@@ -1,11 +1,4 @@
 # =============================================================================
-# Noise Models Architecture - Modular approach for different noise types
-# =============================================================================
-
-using FFTW
-
-
-# =============================================================================
 # 3. CORE FUNCTIONS FOR CORRELATED NOISE
 # =============================================================================
 
@@ -17,6 +10,7 @@ Compute the power spectral density P(k) = A * exp(-σ²|k|²)
 function compute_power_spectrum(A::Float64, σ²::Float64, N::Int)
     freq = fftfreq(N)
     k_grid = freq' .^ 2 .+ freq .^ 2  # Broadcasting
+    println("Power spectrum computed for N=$N, A=$A, σ²=$σ²")
     return A .* exp.(-σ² .* (2π)^2 .* k_grid)
 end
 

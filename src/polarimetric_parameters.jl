@@ -37,9 +37,9 @@ function PolarimetricMap{T}(parameter_type::AbstractString,
                             Ip::AbstractArray{<:Any,2},
                             θ::AbstractArray{<:Any,2}) where {T<:AbstractFloat}        
     @assert size(I) == size(Q) == size(U) == size(Iu) == size(Ip) == size(θ)
-    (minimum(I) < 0) && @warn "Negative intensities in I"  
-    (minimum(Iu) < 0) && @warn "Negative intensities in Iu"  
-    (minimum(Ip) < 0) && @warn "Negative intensities in Ip"  
+    # (minimum(I) < 0) && @warn "Negative intensities in I"  
+    # (minimum(Iu) < 0) && @warn "Negative intensities in Iu"  
+    # (minimum(Ip) < 0) && @warn "Negative intensities in Ip"  
 
     PolarimetricMap(parameter_type,        
                     convert(Array{T},I),
@@ -177,9 +177,9 @@ function rebuild(parameter_type::AbstractString,P::PolarimetricMap)
     else
         error("unkown type, only known types : stokes, intensities and mixed")
     end
-    (minimum(P.I) < 0) && @warn "Negative intensities in I"  
-    (minimum(P.Iu) < 0) && @warn "Negative intensities in Iu"  
-    (minimum(P.Ip) < 0) && @warn "Negative intensities in Ip"  
+    # (minimum(P.I) < 0) && @warn "Negative intensities in I"  
+    # (minimum(P.Iu) < 0) && @warn "Negative intensities in Iu"  
+    # (minimum(P.Ip) < 0) && @warn "Negative intensities in Ip"  
     return nothing
 end
 

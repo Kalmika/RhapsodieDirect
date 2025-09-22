@@ -75,49 +75,6 @@ struct FieldTransformOperator{T<:AbstractFloat,
 end
 
 """
-    DirectModel
-    
-TODO: documentation
-""" DirectModel
-struct DirectModel{T<:AbstractFloat, 
-                   S<:AbstractString,
-                   ColType<:NTuple{2,Int},
-                   RowType<:NTuple{3,Int},
-                   PerFrameTransformsType<:Vector{FieldTransformOperator{T}},
-                   GlobalTransformsType<:Mapping} <: LinearMapping
-    cols::ColType
-    rows::RowType
-    parameter_type::S
-    TR::PerFrameTransformsType               
-    A::GlobalTransformsType             
-end  
-
-DirectModel(cols::ColType, 
-            rows::RowType, 
-            parameter_type::S,
-            TR::PerFrameTransformsType) where {T<:AbstractFloat, 
-                        S<:AbstractString,
-                        ColType<:NTuple{2,Int},
-                        RowType<:NTuple{3,Int},
-                        PerFrameTransformsType<:Vector{FieldTransformOperator{T}}} =
-                   DirectModel(cols, rows, parameter_type, TR, LazyAlgebra.Id)
-
-
-"""
-    Dataset
-    
-TODO: documentation
-""" Dataset
-struct Dataset{T<:AbstractFloat,
-               M<:AbstractArray{T,3},
-               H<:DirectModel{T}}
-               
-        data::M
-        weights::M
-        direct_model::H
-end
-
-"""
     NoiseModel
 
 Abstract type for noise modeling approaches.
@@ -155,6 +112,105 @@ struct CorrelatedNoise{T<:AbstractFloat} <: NoiseModel
         P = compute_power_spectrum(A, σ², N)
         sqrt_P = sqrt.(P)
         new{T}(A, σ², N, P, sqrt_P)
+    end
+end
+
+"""
+    AbstractWeightOperator
+
+Abstract type for precision/weight operators in optimization.
+"""
+abstract type AbstractWeightOperator end
+
+"""
+    DiagonalWeights <: AbstractWeightOperator
+
+Traditional diagonal weight operator W = diag(w).
+Compatible with existing weight arrays.
+"""
+struct DiagonalWeights{T<:AbstractFloat, N} <: AbstractWeightOperator
+    weights::AbstractArray{T,N}
+    
+    DiagonalWeights(weights::AbstractArray{T,N}) where {T,N} = new{T,N}(weights)
+end
+
+"""
+    FourierPrecisionOperator <: AbstractWeightOperator
+
+Fourier-domain precision operator W = M ∘ F^(-1) ∘ diag(1/P(k)) ∘ F
+where M is the bad pixel mask and F is the Fourier transform.
+Applies inverse filter 1/(P(k) + ε) in frequency domain, then masks bad pixels.
+"""
+struct FourierPrecisionOperator{T<:AbstractFloat} <: AbstractWeightOperator
+    inv_psd::Matrix{ComplexF64}    # 1/(P(k) + ε) 
+    good_pix::AbstractArray{T,2}   # Bad pixel mask M (0 = dead, ≠0 = good)
+    fft_plan::Any                  # Pre-computed FFT plan (can be ScaledPlan or cFFTWPlan)
+    ifft_plan::Any                 # Pre-computed IFFT plan (can be ScaledPlan or cFFTWPlan)
+    epsilon::T                     # Regularization parameter
+    
+    function FourierPrecisionOperator(noise::CorrelatedNoise{T}, 
+                                    good_pix::AbstractArray{T,2}, 
+                                    epsilon::T=1e-8) where T
+        inv_psd = 1.0 ./ (noise.P .+ epsilon)
+        # Pre-compute FFT plans for efficiency - use same size as good_pix
+        dummy = zeros(ComplexF64, size(good_pix))
+        fft_plan = plan_fft(dummy)
+        ifft_plan = plan_ifft(dummy)
+        new{T}(complex.(inv_psd), good_pix, fft_plan, ifft_plan, epsilon)
+    end
+end
+
+"""
+    DirectModel
+    
+TODO: documentation
+""" DirectModel
+struct DirectModel{T<:AbstractFloat, 
+                   S<:AbstractString,
+                   ColType<:NTuple{2,Int},
+                   RowType<:NTuple{3,Int},
+                   PerFrameTransformsType<:Vector{FieldTransformOperator{T}},
+                   GlobalTransformsType<:Mapping} <: LinearMapping
+    cols::ColType
+    rows::RowType
+    parameter_type::S
+    TR::PerFrameTransformsType               
+    A::GlobalTransformsType             
+end  
+
+DirectModel(cols::ColType, 
+            rows::RowType, 
+            parameter_type::S,
+            TR::PerFrameTransformsType) where {T<:AbstractFloat, 
+                        S<:AbstractString,
+                        ColType<:NTuple{2,Int},
+                        RowType<:NTuple{3,Int},
+                        PerFrameTransformsType<:Vector{FieldTransformOperator{T}}} =
+                   DirectModel(cols, rows, parameter_type, TR, LazyAlgebra.Id)
+
+"""
+    Dataset
+
+Container for observational data with associated precision operator.
+"""
+struct Dataset{T<:AbstractFloat, W<:AbstractWeightOperator, H<:DirectModel{T}}
+    data::AbstractArray{T,3}
+    weights_op::W          # Weight operator (was AbstractArray in old versions)
+    direct_model::H             # Garde l'ancien direct_model::H
+    
+    # Constructor with backward compatibility
+    function Dataset(data::AbstractArray{T,3}, 
+                    weights::Union{AbstractArray, AbstractWeightOperator},
+                    direct_model::H) where {T, H<:DirectModel{T}}
+        
+        # Convert old weight arrays to DiagonalWeights
+        if weights isa AbstractArray
+            weight_op = DiagonalWeights(weights)
+        else
+            weight_op = weights
+        end
+        
+        new{T, typeof(weight_op), H}(data, weight_op, direct_model)
     end
 end
 

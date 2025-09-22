@@ -18,6 +18,7 @@ module RhapsodieDirect
         convert,
         data_generator,
         data_simulator_dual_component,
+        data_simulator_dual_component_bis,
         data_simulator,
         Dataset,
         DatasetParameters,
@@ -29,6 +30,7 @@ module RhapsodieDirect
         generate_parameters,
         get_indices_table,
         load_field_transforms,
+        load_identity_field_transforms,
         ObjectParameters,
         PolarimetricMap,
         PolarimetricPixel,
@@ -39,7 +41,10 @@ module RhapsodieDirect
         write,
         #  Noise models
         NoiseModel, DiagonalNoise, CorrelatedNoise, create_noise_model, generate_noise, validate_noise_model,
-        generate_correlated_noise
+        generate_correlated_noise,
+        AbstractWeightOperator,
+        DiagonalWeights, 
+        FourierPrecisionOperator
 
     import Base: +, -, *, /, ==, getindex, setindex!, read, write, convert, copy, fill!
 
@@ -51,6 +56,7 @@ module RhapsodieDirect
     import LazyAlgebra: Mapping, vcreate, vcopy, apply!
     using FFTW
     using EasyFITS
+    using compgrad_Rhapsodie
     
     include("types.jl")
     include("polarimetric_parameters.jl")
@@ -60,5 +66,6 @@ module RhapsodieDirect
     include("loaders.jl")
     include("datasimul_tools.jl")
     include("noise_models.jl")
+    include("weight_operators.jl")
 end
 

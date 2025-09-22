@@ -42,25 +42,26 @@ function load_field_transforms(object::ObjectParameters,
     return field_transforms
 end 
 
-function load_identity_field_transforms(object::ObjectParameters,
-                                      data::DatasetParameters)
-    
+function load_identity_field_transforms(object::ObjectParameters, data::DatasetParameters)
+    Id = AffineTransform2D{Float64}()
     field_transforms = Vector{FieldTransformOperator{Float64}}()
-    
+   
     for k = 1:data.frames_total
-        # Coefficients de polarisation identité (matrice identité 3x3)
-        polarization_identity = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
+        output_size = (data.size[1], data.size[2]÷2)
         
-        # Créer un FieldTransformOperator identité sans interpolation
-        # En passant `nothing` pour T1 et T2, cela devrait utiliser l'identité
+        # Identity interpolators (still needed for size matching)
+        T_id = TwoDimensionalTransformInterpolator(output_size,
+                                                  object.size,
+                                                  default_kernel,
+                                                  default_kernel,
+                                                  Id)
+        
         push!(field_transforms, FieldTransformOperator((object.size[1], object.size[2], 3),
-                                                        data.size,
-                                                        polarization_identity,
-                                                        polarization_identity,
-                                                        LazyAlgebra.Id,  # Identity mapping
-                                                        LazyAlgebra.Id)) 
+                                                      data.size,
+                                                      [1.0, 0.0],  # polarisation identité
+                                                      [0.0, 1.0],
+                                                      T_id, T_id))
     end
-    
     return field_transforms
 end
 
