@@ -151,12 +151,12 @@ struct FourierPrecisionOperator{T<:AbstractFloat} <: AbstractWeightOperator
     function FourierPrecisionOperator(noise::CorrelatedNoise{T}, 
                                     good_pix::AbstractArray{T,2}, 
                                     epsilon::T=1e-8) where T
-        inv_psd = 1.0 ./ (noise.P .+ epsilon)
+        inv_psd = complex.(1.0 ./ (noise.P .+ epsilon))
         # Pre-compute FFT plans for efficiency - use same size as good_pix
-        dummy = zeros(ComplexF64, size(good_pix))
+        dummy = zeros(ComplexF64, size(noise.P))
         fft_plan = plan_fft(dummy)
         ifft_plan = plan_ifft(dummy)
-        new{T}(complex.(inv_psd), good_pix, fft_plan, ifft_plan, epsilon)
+        new{T}(inv_psd, good_pix, fft_plan, ifft_plan, epsilon)
     end
 end
 

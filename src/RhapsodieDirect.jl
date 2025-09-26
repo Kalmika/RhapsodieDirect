@@ -56,7 +56,6 @@ module RhapsodieDirect
     import LazyAlgebra: Mapping, vcreate, vcopy, apply!
     using FFTW
     using EasyFITS
-    using compgrad_Rhapsodie
     
     include("types.jl")
     include("polarimetric_parameters.jl")
