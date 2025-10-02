@@ -146,17 +146,16 @@ struct FourierPrecisionOperator{T<:AbstractFloat} <: AbstractWeightOperator
     good_pix::AbstractArray{T,2}   # Bad pixel mask M (0 = dead, ≠0 = good)
     fft_plan::Any                  # Pre-computed FFT plan (can be ScaledPlan or cFFTWPlan)
     ifft_plan::Any                 # Pre-computed IFFT plan (can be ScaledPlan or cFFTWPlan)
-    epsilon::T                     # Regularization parameter
-    
     function FourierPrecisionOperator(noise::CorrelatedNoise{T}, 
-                                    good_pix::AbstractArray{T,2}, 
-                                    epsilon::T=1e-8) where T
-        inv_psd = complex.(1.0 ./ (noise.P .+ epsilon))
+                                    good_pix::AbstractArray{T,2}; 
+                                    reg_param_relative::Float64=1e-3) where T
+        reg_param = reg_param_relative * maximum(noise.P)
+        inv_psd = complex.(1.0 ./ (noise.P .+ reg_param))
         # Pre-compute FFT plans for efficiency - use same size as good_pix
         dummy = zeros(ComplexF64, size(noise.P))
         fft_plan = plan_fft(dummy)
         ifft_plan = plan_ifft(dummy)
-        new{T}(inv_psd, good_pix, fft_plan, ifft_plan, epsilon)
+        new{T}(inv_psd, good_pix, fft_plan, ifft_plan)
     end
 end
 

@@ -59,20 +59,24 @@ function data_simulator_dual_component_bis(
     S_star::PolarimetricMap;
     noise_model::NoiseModel = DiagonalNoise(),
     A_disk::Mapping = LazyAlgebra.Id,
-    ro_noise=8.5) where {T <:AbstractFloat}
+    verbose::Bool = false,
+    ro_noise::Float64 = 8.5,
+    reg_param_relative::Float64 = 1e-3) where {T <:AbstractFloat}
 
-    println("Good_Pix size: ", size(Good_Pix))
-    println("Number of field transforms: ", length(F))
-    println("S_disk size: ", size(S_disk))
-    println("S_star size: ", size(S_star))
-    println("Noise model type: ", typeof(noise_model))
-    println("A_disk type: ", typeof(A_disk))
-    println("ro_noise value: ", ro_noise)
+    if verbose
+        println("Good_Pix size: ", size(Good_Pix))
+        println("Number of field transforms: ", length(F))
+        println("S_disk size: ", size(S_disk))
+        println("S_star size: ", size(S_star))
+        println("Noise model type: ", typeof(noise_model))
+        println("A_disk type: ", typeof(A_disk))
+        println("ro_noise value: ", ro_noise)
+    end
     
     if isa(noise_model, DiagonalNoise)
         return dsdc_diagonal_noise(Good_Pix, F, S_disk, S_star; A_disk=A_disk, ro_noise=ro_noise)        
     elseif isa(noise_model, CorrelatedNoise)
-        return dsdc_correlated_noise(Good_Pix, F, S_disk, S_star, noise_model; A_disk=A_disk, ro_noise=ro_noise)
+        return dsdc_correlated_noise(Good_Pix, F, S_disk, S_star, noise_model; A_disk=A_disk, ro_noise=ro_noise, reg_param_relative=reg_param_relative)
     else
         error("Unsupported noise model type: $(typeof(noise_model))")
     end
@@ -109,8 +113,9 @@ function dsdc_correlated_noise(
     S_star::PolarimetricMap,
     noise_model::CorrelatedNoise; 
     A_disk::Mapping = LazyAlgebra.Id, 
-    ro_noise=8.5) where {T <:AbstractFloat}
-   
+    reg_param_relative::Float64 = 1e-3,  # Regularization parameter
+    ro_noise::Float64 = 8.5) where {T <:AbstractFloat}
+
     M=zeros(size(Good_Pix)[1],size(Good_Pix)[2],length(F))
     H_disk = DirectModel(size(S_disk), size(M), S_disk.parameter_type, F, A_disk)
 	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
@@ -119,7 +124,7 @@ function dsdc_correlated_noise(
     S_star_correlated_noise = PolarimetricMap("intensities",  S_star.Iu .+ correlated_noise, zero(correlated_noise), zero(correlated_noise)) 
     data = H_disk*S_disk + H_star*S_star_correlated_noise
 
-    weights_operator = FourierPrecisionOperator(noise_model, Good_Pix)
+    weights_operator = FourierPrecisionOperator(noise_model, Good_Pix, reg_param_relative=reg_param_relative)
 	return data, weights_operator
 end
 

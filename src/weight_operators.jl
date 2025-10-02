@@ -1,4 +1,5 @@
 # Méthodes d'application des opérateurs
+import Base: broadcastable
 
 """
     *(W::DiagonalWeights, x::AbstractArray)
@@ -8,6 +9,23 @@ Apply diagonal weights element-wise: W * x = weights .* x
 function Base.:*(W::DiagonalWeights{T,N}, x::AbstractArray{T,N}) where {T,N}
     return W.weights .* x  
 end
+
+"""
+    /(x::AbstractArray, W::DiagonalWeights)
+
+Apply diagonal weights element-wise via division: x / W = x ./ weights
+"""
+function Base.:/(x::AbstractArray{T,N}, W::DiagonalWeights{T,N}) where {T,N}
+    return x ./ W.weights
+end
+
+"""
+    broadcastable(W::DiagonalWeights)
+
+Allow DiagonalWeights to be used in broadcasted operations (like .+, .*, etc.).
+The broadcasting will be applied to the underlying `weights` array.
+"""
+Base.broadcastable(W::DiagonalWeights) = W.weights
 
 """
     *(W::FourierPrecisionOperator, x::AbstractArray{T,3})
