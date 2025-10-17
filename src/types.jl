@@ -100,6 +100,7 @@ Based on filtered Gaussian noise in Fourier domain.
 * `N` - Image size (assuming square images)
 * `P` - Pre-computed P(k) matrix
 * `sqrt_P` - Pre-computed sqrt(P(k)) for efficiency
+* `sqrt_P_double` - Pre-computed sqrt(P(k)) of size 2N x 2N
 """
 struct CorrelatedNoise{T<:AbstractFloat} <: NoiseModel
     A::T
@@ -107,11 +108,13 @@ struct CorrelatedNoise{T<:AbstractFloat} <: NoiseModel
     N::Int
     P::Matrix{T}
     sqrt_P::Matrix{T}
-    
+    sqrt_P_double::Matrix{T}
+
     function CorrelatedNoise(A::T, σ²::T, N::Int) where {T<:AbstractFloat}
         P = compute_power_spectrum(A, σ², N)
         sqrt_P = sqrt.(P)
-        new{T}(A, σ², N, P, sqrt_P)
+        sqrt_P_double = sqrt.(compute_power_spectrum(A, σ², N*2))
+        new{T}(A, σ², N, P, sqrt_P, sqrt_P_double)
     end
 end
 

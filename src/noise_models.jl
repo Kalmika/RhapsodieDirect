@@ -26,6 +26,13 @@ function generate_correlated_noise(model::CorrelatedNoise)
     return real.(ifft(filtered_noise))
 end
 
+function generate_correlated_toeplitz_noise(model::CorrelatedNoise)
+    white_noise = randn(model.N*2, model.N*2)
+    fourier_noise = fft(white_noise)
+    filtered_noise = fourier_noise .* model.sqrt_P_double
+    return real.(ifft(filtered_noise))[1:model.N, 1:model.N] # Crop to original size
+end
+
 # =============================================================================
 # 4. UNIFIED INTERFACE - Multiple Dispatch
 # =============================================================================
