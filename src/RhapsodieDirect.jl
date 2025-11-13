@@ -40,7 +40,7 @@ module RhapsodieDirect
         vcreate,
         write,
         #  Noise models
-        NoiseModel, DiagonalNoise, CorrelatedNoise, create_noise_model, generate_noise, validate_noise_model,
+        NoiseModel, DiagonalNoise, CorrelatedNoise, DiagonalAndCorrelatedNoise, create_noise_model, generate_noise, validate_noise_model,
         generate_correlated_noise,
         AbstractWeightOperator,
         DiagonalWeights, 

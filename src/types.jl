@@ -89,6 +89,7 @@ Compatible with existing weight-based approach.
 """
 struct DiagonalNoise <: NoiseModel end
 
+
 """
     CorrelatedNoise <: NoiseModel
 
@@ -115,6 +116,34 @@ struct CorrelatedNoise{T<:AbstractFloat} <: NoiseModel
         sqrt_P = sqrt.(P)
         sqrt_P_double = sqrt.(compute_power_spectrum(A, σ², N*2))
         new{T}(A, σ², N, P, sqrt_P, sqrt_P_double)
+    end
+end
+
+
+"""
+    DiagonalAndCorrelatedNoise{T} <: NoiseModel
+
+A noise model that combines a diagonal and a correlated component.
+It is constructed via composition, holding instances of the two sub-models.
+
+# Fields
+- `diag_noise::DiagonalNoise`: The diagonal noise component.
+- `corr_noise::CorrelatedNoise{T}`: The correlated noise component.
+"""
+struct DiagonalAndCorrelatedNoise{T<:AbstractFloat} <: NoiseModel
+    diag_noise::DiagonalNoise
+    corr_noise::CorrelatedNoise{T}
+
+    """
+        DiagonalAndCorrelatedNoise(A::T, σ²::T, N::Int) where {T}
+
+    Convenience constructor to create a `DiagonalAndCorrelatedNoise` model
+    directly from the physical parameters of its correlated part.
+    """
+    function DiagonalAndCorrelatedNoise(A::T, σ²::T, N::Int) where {T<:AbstractFloat}
+        diag_model = DiagonalNoise()
+        corr_model = CorrelatedNoise(A, σ², N)
+        new{T}(diag_model, corr_model)
     end
 end
 

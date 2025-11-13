@@ -74,9 +74,11 @@ function data_simulator_dual_component_bis(
     end
     
     if isa(noise_model, DiagonalNoise)
-        return dsdc_diagonal_noise(Good_Pix, F, S_disk, S_star; A_disk=A_disk, ro_noise=ro_noise)        
+        return dsdc_diagonal_noise(Good_Pix, F, S_disk, S_star; A_disk=A_disk, ro_noise=ro_noise)
     elseif isa(noise_model, CorrelatedNoise)
         return dsdc_correlated_noise(Good_Pix, F, S_disk, S_star, noise_model; A_disk=A_disk, ro_noise=ro_noise, reg_param_relative=reg_param_relative)
+    elseif isa(noise_model, DiagonalAndCorrelatedNoise)
+        return dsdc_diagonal_and_correlated_noise(Good_Pix, F, S_disk, S_star, noise_model; A_disk=A_disk, ro_noise=ro_noise)
     else
         error("Unsupported noise model type: $(typeof(noise_model))")
     end
@@ -106,12 +108,37 @@ end
 """  
 Data simulator dual component (disk + star) with correlated noise.
 """
+function dsdc_diagonal_and_correlated_noise(
+    Good_Pix::AbstractArray{T,2},
+    F::Vector{FieldTransformOperator{T}}, 
+    S_disk::PolarimetricMap, 
+    S_star::PolarimetricMap,
+    noise_model::DiagonalAndCorrelatedNoise{T}; 
+    A_disk::Mapping = LazyAlgebra.Id, 
+    reg_param_relative::Float64 = 1e-3,  # Regularization parameter
+    ro_noise::Float64 = 8.5) where {T <:AbstractFloat}
+
+    M=zeros(size(Good_Pix)[1],size(Good_Pix)[2],length(F))
+    H_disk = DirectModel(size(S_disk), size(M), S_disk.parameter_type, F, A_disk)
+	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
+
+    correlated_noise = generate_correlated_noise(noise_model.corr_noise)
+    S_star_correlated_noise = PolarimetricMap("intensities",  S_star.Iu .+ correlated_noise, zero(correlated_noise), zero(correlated_noise)) 
+    data = H_disk*S_disk + H_star*S_star_correlated_noise
+
+    weights_operator = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
+	return data, weights_operator
+end
+
+"""  
+Data simulator dual component (disk + star) with correlated noise.
+"""
 function dsdc_correlated_noise(
     Good_Pix::AbstractArray{T,2},
     F::Vector{FieldTransformOperator{T}}, 
     S_disk::PolarimetricMap, 
     S_star::PolarimetricMap,
-    noise_model::CorrelatedNoise; 
+    noise_model::CorrelatedNoise{T}; 
     A_disk::Mapping = LazyAlgebra.Id, 
     reg_param_relative::Float64 = 1e-3,  # Regularization parameter
     ro_noise::Float64 = 8.5) where {T <:AbstractFloat}

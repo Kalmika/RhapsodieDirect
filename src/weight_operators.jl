@@ -35,6 +35,7 @@ Implements W * x = IFFT(inv_psd .* FFT(x))
 where M is the bad pixel mask.
 """
 function Base.:*(W::FourierPrecisionOperator, x::AbstractArray{T,3}) where T
+    # x shape : (128, 256, 4), so 8 images of 128x128 side by side
     largeur_sous_image = size(x, 2) ÷ 2
     result = similar(x)
     # Boucle externe : sur les tranches
