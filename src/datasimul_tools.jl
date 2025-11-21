@@ -22,7 +22,6 @@ function data_simulator_dual_component(Good_Pix::AbstractArray{T,2},
 	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
     M = H_disk*S_disk + H_star*S_star
     
-    println("hellox!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     VAR=max.(M,zero(eltype(M))) .+ro_noise^2
 	W=Good_Pix ./ VAR
 	D=data_generator(M, W)
@@ -114,17 +113,21 @@ function dsdc_diagonal_and_correlated_noise(
     S_disk::PolarimetricMap, 
     S_star::PolarimetricMap,
     noise_model::DiagonalAndCorrelatedNoise{T}; 
-    A_disk::Mapping = LazyAlgebra.Id, 
-    reg_param_relative::Float64 = 1e-3,  # Regularization parameter
+    A_disk::Mapping = LazyAlgebra.Id,
     ro_noise::Float64 = 8.5) where {T <:AbstractFloat}
 
     M=zeros(size(Good_Pix)[1],size(Good_Pix)[2],length(F))
     H_disk = DirectModel(size(S_disk), size(M), S_disk.parameter_type, F, A_disk)
 	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
 
-    correlated_noise = generate_correlated_noise(noise_model.corr_noise)
-    S_star_correlated_noise = PolarimetricMap("intensities",  S_star.Iu .+ correlated_noise, zero(correlated_noise), zero(correlated_noise)) 
-    data = H_disk*S_disk + H_star*S_star_correlated_noise
+    S_star = PolarimetricMap("intensities",  S_star.Iu, zero(S_star.Iu), zero(S_star.Iu)) 
+    data = H_disk*S_disk + H_star*S_star
+    
+    for k in 1:size(data, 3)
+        correlated_noise = generate_correlated_noise(noise_model.corr_noise)
+        correlated_mesured_noise = H_star * PolarimetricMap("intensities", correlated_noise, zero(S_star.Iu), zero(S_star.Iu))
+        data[:, :, k] += correlated_mesured_noise[:, :, k]
+    end
 
     weights_operator = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
 	return data, weights_operator
@@ -147,9 +150,14 @@ function dsdc_correlated_noise(
     H_disk = DirectModel(size(S_disk), size(M), S_disk.parameter_type, F, A_disk)
 	H_star = DirectModel(size(S_star), size(M), S_star.parameter_type, F)
 
-    correlated_noise = generate_correlated_noise(noise_model)
-    S_star_correlated_noise = PolarimetricMap("intensities",  S_star.Iu .+ correlated_noise, zero(correlated_noise), zero(correlated_noise)) 
-    data = H_disk*S_disk + H_star*S_star_correlated_noise
+    S_star = PolarimetricMap("intensities",  S_star.Iu, zero(S_star.Iu), zero(S_star.Iu)) 
+    data = H_disk*S_disk + H_star*S_star
+    
+    for k in 1:size(data, 3)
+        correlated_noise = generate_correlated_noise(noise_model.corr_noise)
+        correlated_mesured_noise = H_star * PolarimetricMap("intensities", correlated_noise, zero(S_star.Iu), zero(S_star.Iu))
+        data[:, :, k] += correlated_mesured_noise[:, :, k]
+    end
 
     weights_operator = FourierPrecisionOperator(noise_model, Good_Pix, reg_param_relative=reg_param_relative)
 	return data, weights_operator
