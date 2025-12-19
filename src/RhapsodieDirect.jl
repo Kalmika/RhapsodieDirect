@@ -44,7 +44,9 @@ module RhapsodieDirect
         generate_correlated_noise,
         AbstractWeightOperator,
         DiagonalWeights, 
-        FourierPrecisionOperator
+        FourierPrecisionOperator,
+        compute_polarization_inverse_matrix,
+        apply_direct_model_inverse_no_blur
 
     import Base: +, -, *, /, ==, getindex, setindex!, read, write, convert, copy, fill!
 

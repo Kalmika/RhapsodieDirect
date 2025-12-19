@@ -154,7 +154,7 @@ function dsdc_correlated_noise(
     data = H_disk*S_disk + H_star*S_star
     
     for k in 1:size(data, 3)
-        correlated_noise = generate_correlated_noise(noise_model.corr_noise)
+        correlated_noise = generate_correlated_noise(noise_model)
         correlated_mesured_noise = H_star * PolarimetricMap("intensities", correlated_noise, zero(S_star.Iu), zero(S_star.Iu))
         data[:, :, k] += correlated_mesured_noise[:, :, k]
     end

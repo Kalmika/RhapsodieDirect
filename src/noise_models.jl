@@ -3,15 +3,15 @@
 # =============================================================================
 
 """
-    compute_power_spectrum(A, σ², N) -> Matrix{Float64}
+    compute_power_spectrum(A, σ, N) -> Matrix{Float64}
 
 Compute the power spectral density P(k) = A * exp(-σ²|k|²)
 """
-function compute_power_spectrum(A::Float64, σ²::Float64, N::Int)
+function compute_power_spectrum(A::Float64, σ::Float64, N::Int)
     freq = fftfreq(N)
     k_grid = freq' .^ 2 .+ freq .^ 2  # Broadcasting
-    println("Power spectrum computed for N=$N, A=$A, σ²=$σ²")
-    return A .* exp.(-σ² .* (2π)^2 .* k_grid)
+    # println("Power spectrum computed for N=$N, A=$A, σ=$σ")
+    return A .* exp.(-σ^2 .* (2π)^2 .* k_grid)
 end
 
 """
@@ -131,7 +131,7 @@ Factory function to create noise models based on type.
 diagonal_model = create_noise_model(:diagonal)
 
 # Correlated noise
-corr_model = create_noise_model(:correlated, A=2.0, σ²=5.0, N=128)
+corr_model = create_noise_model(:correlated, A=2.0, σ=5.0, N=128)
 ```
 """
 function create_noise_model(type::Symbol, args...; kwargs...)
@@ -140,9 +140,9 @@ function create_noise_model(type::Symbol, args...; kwargs...)
     elseif type == :correlated
         # Extract parameters from kwargs
         A = Base.get(kwargs, :A, 1.0)
-        σ² = Base.get(kwargs, :σ², 1.0) 
+        σ = Base.get(kwargs, :σ, 1.0) 
         N = Base.get(kwargs, :N, 128)
-        return CorrelatedNoise(A, σ², N)
+        return CorrelatedNoise(A, σ, N)
     else
         error("Unknown noise model type: $type")
     end
@@ -152,7 +152,7 @@ end
 # 6. UTILITY FUNCTIONS
 # =============================================================================
 function theoretical_variance(model::CorrelatedNoise)
-    return model.A / (4π * model.σ²)
+    return model.A / (4π * model.σ^2)
 end
 
 """

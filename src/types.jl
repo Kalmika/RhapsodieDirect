@@ -97,7 +97,7 @@ Spatially correlated noise model using power spectral density P(k).
 Based on filtered Gaussian noise in Fourier domain.
 
 * `A` - Amplitude parameter  
-* `σ²` - Spectral width parameter
+* `σ` - Spectral width parameter
 * `N` - Image size (assuming square images)
 * `P` - Pre-computed P(k) matrix
 * `sqrt_P` - Pre-computed sqrt(P(k)) for efficiency
@@ -105,17 +105,17 @@ Based on filtered Gaussian noise in Fourier domain.
 """
 struct CorrelatedNoise{T<:AbstractFloat} <: NoiseModel
     A::T
-    σ²::T  
+    σ::T  
     N::Int
     P::Matrix{T}
     sqrt_P::Matrix{T}
     sqrt_P_double::Matrix{T}
 
-    function CorrelatedNoise(A::T, σ²::T, N::Int) where {T<:AbstractFloat}
-        P = compute_power_spectrum(A, σ², N)
+    function CorrelatedNoise(A::T, σ::T, N::Int) where {T<:AbstractFloat}
+        P = compute_power_spectrum(A, σ, N)
         sqrt_P = sqrt.(P)
-        sqrt_P_double = sqrt.(compute_power_spectrum(A, σ², N*2))
-        new{T}(A, σ², N, P, sqrt_P, sqrt_P_double)
+        sqrt_P_double = sqrt.(compute_power_spectrum(A, σ, N*2))
+        new{T}(A, σ, N, P, sqrt_P, sqrt_P_double)
     end
 end
 
@@ -135,14 +135,14 @@ struct DiagonalAndCorrelatedNoise{T<:AbstractFloat} <: NoiseModel
     corr_noise::CorrelatedNoise{T}
 
     """
-        DiagonalAndCorrelatedNoise(A::T, σ²::T, N::Int) where {T}
+        DiagonalAndCorrelatedNoise(A::T, σ::T, N::Int) where {T}
 
     Convenience constructor to create a `DiagonalAndCorrelatedNoise` model
     directly from the physical parameters of its correlated part.
     """
-    function DiagonalAndCorrelatedNoise(A::T, σ²::T, N::Int) where {T<:AbstractFloat}
+    function DiagonalAndCorrelatedNoise(A::T, σ::T, N::Int) where {T<:AbstractFloat}
         diag_model = DiagonalNoise()
-        corr_model = CorrelatedNoise(A, σ², N)
+        corr_model = CorrelatedNoise(A, σ, N)
         new{T}(diag_model, corr_model)
     end
 end
@@ -206,9 +206,11 @@ struct DirectModel{T<:AbstractFloat,
     rows::RowType
     parameter_type::S
     TR::PerFrameTransformsType               
-    A::GlobalTransformsType             
+    A::GlobalTransformsType
+    A_pseudo_inv::Matrix{T}  # Matrice pseudo-inverse des coefficients de polarisation
 end  
 
+# Constructeur sans A (A = Identity)
 DirectModel(cols::ColType, 
             rows::RowType, 
             parameter_type::S,
@@ -218,6 +220,30 @@ DirectModel(cols::ColType,
                         RowType<:NTuple{3,Int},
                         PerFrameTransformsType<:Vector{FieldTransformOperator{T}}} =
                    DirectModel(cols, rows, parameter_type, TR, LazyAlgebra.Id)
+
+# Constructeur complet avec calcul automatique de A_pseudo_inv
+function DirectModel(cols::ColType, 
+                    rows::RowType, 
+                    parameter_type::S,
+                    TR::PerFrameTransformsType,
+                    A::GlobalTransformsType) where {T<:AbstractFloat, 
+                                S<:AbstractString,
+                                ColType<:NTuple{2,Int},
+                                RowType<:NTuple{3,Int},
+                                PerFrameTransformsType<:Vector{FieldTransformOperator{T}},
+                                GlobalTransformsType<:Mapping}
+    
+    # Calcul de la matrice pseudo-inverse des coefficients de polarisation
+    A_matrix = zeros(T, length(TR)*2, length(TR[1].v_l))
+    @inbounds for k=1:length(TR)	 
+        A_matrix[2k-1, :] .= TR[k].v_l
+        A_matrix[2k, :]   .= TR[k].v_r
+    end
+    A_pseudo_inv = inv(A_matrix' * A_matrix)
+    
+    return DirectModel{T, S, ColType, RowType, PerFrameTransformsType, GlobalTransformsType}(
+        cols, rows, parameter_type, TR, A, A_pseudo_inv)
+end
 
 """
     Dataset
