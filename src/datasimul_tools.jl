@@ -130,6 +130,12 @@ function dsdc_diagonal_and_correlated_noise(
     end
 
     weights_operator = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
+    @inbounds for i in eachindex(data, weights_operator.weights)
+        (isfinite(weights_operator.weights[i]) && weights_operator.weights[i] >= 0 ) || error("invalid weights")
+        if weights_operator.weights[i] ==0 
+            data[i]=zero(T);
+        end
+    end
 	return data, weights_operator
 end
 
