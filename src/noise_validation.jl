@@ -54,10 +54,10 @@ function validate_noise_model(model::CorrelatedNoise; σ²_values=logrange(0.1, 
 end
 
 """
-    validate_noise_model(model::DiagonalNoise; kwargs...)
+    validate_noise_model(model::DiagonalNoise{T}; kwargs...)
 
 Validation for diagonal noise (no plotting needed).
 """
-function validate_noise_model(model::DiagonalNoise; kwargs...)
+function validate_noise_model(::DiagonalNoise{T}; kwargs...) where {T<:AbstractFloat}
     println("✅ DiagonalNoise model validated (no additional checks needed)")
 end

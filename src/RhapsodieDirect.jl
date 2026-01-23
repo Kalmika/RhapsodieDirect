@@ -42,8 +42,11 @@ module RhapsodieDirect
         #  Noise models
         NoiseModel, DiagonalNoise, CorrelatedNoise, DiagonalAndCorrelatedNoise, create_noise_model, generate_noise, validate_noise_model,
         generate_correlated_noise,
+        apply_covariance,
+        toeplitz_convolve,
+        with_weights,
         AbstractWeightOperator,
-        DiagonalWeights, 
+        DiagonalWeights,
         FourierPrecisionOperator,
         compute_polarization_inverse_matrix,
         apply_direct_model_inverse_no_blur

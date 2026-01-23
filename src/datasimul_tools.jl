@@ -53,14 +53,13 @@ Flexible dual component simulator for disk + star systems.
 """
 function data_simulator_dual_component_bis(
     Good_Pix::AbstractArray{T,2},
-    F::Vector{FieldTransformOperator{T}}, 
-    S_disk::PolarimetricMap, 
+    F::Vector{FieldTransformOperator{T}},
+    S_disk::PolarimetricMap,
     S_star::PolarimetricMap;
-    noise_model::NoiseModel = DiagonalNoise(),
+    noise_model::NoiseModel = DiagonalNoise{T}(),
     A_disk::Mapping = LazyAlgebra.Id,
     verbose::Bool = false,
-    ro_noise::Float64 = 8.5,
-    reg_param_relative::Float64 = 1e-3) where {T <:AbstractFloat}
+    ro_noise::Float64 = 8.5) where {T <:AbstractFloat}
 
     if verbose
         println("Good_Pix size: ", size(Good_Pix))
@@ -75,7 +74,7 @@ function data_simulator_dual_component_bis(
     if isa(noise_model, DiagonalNoise)
         return dsdc_diagonal_noise(Good_Pix, F, S_disk, S_star; A_disk=A_disk, ro_noise=ro_noise)
     elseif isa(noise_model, CorrelatedNoise)
-        return dsdc_correlated_noise(Good_Pix, F, S_disk, S_star, noise_model; A_disk=A_disk, ro_noise=ro_noise, reg_param_relative=reg_param_relative)
+        return dsdc_correlated_noise(Good_Pix, F, S_disk, S_star, noise_model; A_disk=A_disk)
     elseif isa(noise_model, DiagonalAndCorrelatedNoise)
         return dsdc_diagonal_and_correlated_noise(Good_Pix, F, S_disk, S_star, noise_model; A_disk=A_disk, ro_noise=ro_noise)
     else
@@ -129,14 +128,14 @@ function dsdc_diagonal_and_correlated_noise(
         data[:, :, k] += correlated_mesured_noise[:, :, k]
     end
 
-    weights_operator = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
-    @inbounds for i in eachindex(data, weights_operator.weights)
-        (isfinite(weights_operator.weights[i]) && weights_operator.weights[i] >= 0 ) || error("invalid weights")
-        if weights_operator.weights[i] ==0 
+    weights = compute_weights_and_add_noise!(data, Good_Pix, ro_noise)
+    @inbounds for i in eachindex(data, weights)
+        (isfinite(weights[i]) && weights[i] >= 0 ) || error("invalid weights")
+        if weights[i] ==0 
             data[i]=zero(T);
         end
     end
-	return data, weights_operator
+	return data, weights
 end
 
 """  
@@ -148,9 +147,8 @@ function dsdc_correlated_noise(
     S_disk::PolarimetricMap, 
     S_star::PolarimetricMap,
     noise_model::CorrelatedNoise{T}; 
-    A_disk::Mapping = LazyAlgebra.Id, 
-    reg_param_relative::Float64 = 1e-3,  # Regularization parameter
-    ro_noise::Float64 = 8.5) where {T <:AbstractFloat}
+    A_disk::Mapping = LazyAlgebra.Id
+    ) where {T <:AbstractFloat}
 
     M=zeros(size(Good_Pix)[1],size(Good_Pix)[2],length(F))
     H_disk = DirectModel(size(S_disk), size(M), S_disk.parameter_type, F, A_disk)
@@ -165,8 +163,7 @@ function dsdc_correlated_noise(
         data[:, :, k] += correlated_mesured_noise[:, :, k]
     end
 
-    weights_operator = FourierPrecisionOperator(noise_model, Good_Pix, reg_param_relative=reg_param_relative)
-	return data, weights_operator
+	return data, nothing
 end
 
 function data_simulator(Good_Pix::AbstractArray{T,2},
@@ -189,7 +186,7 @@ function compute_weights_and_add_noise!(data::AbstractArray{T,N1},
     weights = good_pixels ./ VAR    
     add_noise_with_masking!(data, weights)
 
-    return DiagonalWeights(weights)
+    return weights
 end
 
 function add_noise_with_masking!(data::AbstractArray{T,N}, weights::AbstractArray{T,N};bad=zero(T)) where {T<:AbstractFloat,N}   

@@ -82,12 +82,31 @@ Abstract type for noise modeling approaches.
 abstract type NoiseModel end
 
 """
-    DiagonalNoise <: NoiseModel
+    DiagonalNoise{T} <: NoiseModel
 
 Classical diagonal noise model using independent Gaussian noise.
-Compatible with existing weight-based approach.
+Can be initialized with or without explicit weights.
+
+# Fields
+- `weights::Union{AbstractArray{T}, Nothing}`: Optional weight matrix W. If `nothing`, acts as identity.
+
+# Constructors
+- `DiagonalNoise{T}()`: Create without weights (identity covariance)
+- `DiagonalNoise(weights)`: Create with specific weights (type inferred)
 """
-struct DiagonalNoise <: NoiseModel end
+struct DiagonalNoise{T<:AbstractFloat} <: NoiseModel
+    weights::Union{AbstractArray{T}, Nothing}
+
+    # Constructor without weights - requires explicit type parameter
+    DiagonalNoise{T}() where {T<:AbstractFloat} = new{T}(nothing)
+
+    # Constructor with weights - infers type from weights
+    DiagonalNoise(weights::AbstractArray{T}) where {T<:AbstractFloat} = new{T}(weights)
+end
+
+# Default constructor - uses Float64 when no type is specified
+DiagonalNoise() = DiagonalNoise{Float64}()
+
 
 
 """
@@ -96,26 +115,29 @@ struct DiagonalNoise <: NoiseModel end
 Spatially correlated noise model using power spectral density P(k).
 Based on filtered Gaussian noise in Fourier domain.
 
-* `A` - Amplitude parameter  
+* `A` - Amplitude parameter
 * `σ` - Spectral width parameter
 * `N` - Image size (assuming square images)
-* `P` - Pre-computed P(k) matrix
-* `sqrt_P` - Pre-computed sqrt(P(k)) for efficiency
+* `P` - Pre-computed P(k) matrix (N x N)
+* `P_double` - Pre-computed P(k) matrix (2N x 2N) for Toeplitz convolution
+* `sqrt_P` - Pre-computed sqrt(P(k)) for efficiency (N x N)
 * `sqrt_P_double` - Pre-computed sqrt(P(k)) of size 2N x 2N
 """
 struct CorrelatedNoise{T<:AbstractFloat} <: NoiseModel
     A::T
-    σ::T  
+    σ::T
     N::Int
     P::Matrix{T}
+    P_double::Matrix{T}
     sqrt_P::Matrix{T}
     sqrt_P_double::Matrix{T}
 
     function CorrelatedNoise(A::T, σ::T, N::Int) where {T<:AbstractFloat}
         P = compute_power_spectrum(A, σ, N)
+        P_double = compute_power_spectrum(A, σ, N*2)
         sqrt_P = sqrt.(P)
-        sqrt_P_double = sqrt.(compute_power_spectrum(A, σ, N*2))
-        new{T}(A, σ, N, P, sqrt_P, sqrt_P_double)
+        sqrt_P_double = sqrt.(P_double)
+        new{T}(A, σ, N, P, P_double, sqrt_P, sqrt_P_double)
     end
 end
 
@@ -127,12 +149,21 @@ A noise model that combines a diagonal and a correlated component.
 It is constructed via composition, holding instances of the two sub-models.
 
 # Fields
-- `diag_noise::DiagonalNoise`: The diagonal noise component.
+- `diag_noise::DiagonalNoise{T}`: The diagonal noise component.
 - `corr_noise::CorrelatedNoise{T}`: The correlated noise component.
 """
 struct DiagonalAndCorrelatedNoise{T<:AbstractFloat} <: NoiseModel
-    diag_noise::DiagonalNoise
+    diag_noise::DiagonalNoise{T}
     corr_noise::CorrelatedNoise{T}
+
+    """
+        DiagonalAndCorrelatedNoise(diag_noise::DiagonalNoise{T}, corr_noise::CorrelatedNoise{T})
+
+    Direct constructor from component noise models.
+    """
+    function DiagonalAndCorrelatedNoise(diag_noise::DiagonalNoise{T}, corr_noise::CorrelatedNoise{T}) where {T<:AbstractFloat}
+        new{T}(diag_noise, corr_noise)
+    end
 
     """
         DiagonalAndCorrelatedNoise(A::T, σ::T, N::Int) where {T}
@@ -141,9 +172,7 @@ struct DiagonalAndCorrelatedNoise{T<:AbstractFloat} <: NoiseModel
     directly from the physical parameters of its correlated part.
     """
     function DiagonalAndCorrelatedNoise(A::T, σ::T, N::Int) where {T<:AbstractFloat}
-        diag_model = DiagonalNoise()
-        corr_model = CorrelatedNoise(A, σ, N)
-        new{T}(diag_model, corr_model)
+        new{T}(DiagonalNoise{T}(), CorrelatedNoise(A, σ, N))
     end
 end
 
@@ -248,26 +277,19 @@ end
 """
     Dataset
 
-Container for observational data with associated precision operator.
+Container for observational data with associated noise model and direct model.
 """
-struct Dataset{T<:AbstractFloat, W<:AbstractWeightOperator, H<:DirectModel{T}}
+struct Dataset{T<:AbstractFloat, N<:NoiseModel, H<:DirectModel{T}}
     data::AbstractArray{T,3}
-    weights_op::W          # Weight operator (was AbstractArray in old versions)
-    direct_model::H             # Garde l'ancien direct_model::H
-    
-    # Constructor with backward compatibility
-    function Dataset(data::AbstractArray{T,3}, 
-                    weights::Union{AbstractArray, AbstractWeightOperator},
-                    direct_model::H) where {T, H<:DirectModel{T}}
-        
-        # Convert old weight arrays to DiagonalWeights
-        if weights isa AbstractArray
-            weight_op = DiagonalWeights(weights)
-        else
-            weight_op = weights
-        end
-        
-        new{T, typeof(weight_op), H}(data, weight_op, direct_model)
+    noise_model::N
+    direct_model::H
+
+    function Dataset(
+        data::AbstractArray{T,3},
+        noise_model::NoiseModel,
+        direct_model::H
+    ) where {T, H<:DirectModel{T}}
+        new{T, typeof(noise_model), H}(data, noise_model, direct_model)
     end
 end
 

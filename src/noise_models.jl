@@ -45,9 +45,9 @@ Multiple dispatch handles different noise types automatically.
 """
 
 # Diagonal noise generation (existing approach)
-function generate_noise(model::DiagonalNoise, signal::AbstractArray, weights::AbstractArray)
+function generate_noise(::DiagonalNoise{T}, signal::AbstractArray{T}, weights::AbstractArray{T}) where {T<:AbstractFloat}
     noise = similar(signal)
-    
+
     @inbounds for i in eachindex(noise, weights)
         w = weights[i]
         if isfinite(w) && w > 0
@@ -56,7 +56,7 @@ function generate_noise(model::DiagonalNoise, signal::AbstractArray, weights::Ab
             noise[i] = 0.0
         end
     end
-    
+
     return noise
 end
 
@@ -67,7 +67,7 @@ Apply precision matrix W = C^(-1) to residual.
 """
 
 # Diagonal precision (existing approach)
-function apply_precision_matrix(model::DiagonalNoise, residual::AbstractArray, weights::AbstractArray)
+function apply_precision_matrix(::DiagonalNoise{T}, residual::AbstractArray{T}, weights::AbstractArray{T}) where {T<:AbstractFloat}
     return weights .* residual
 end
 
@@ -121,28 +121,31 @@ end
 # =============================================================================
 
 """
-    create_noise_model(type::Symbol, params...) -> NoiseModel
+    create_noise_model(type::Symbol, params...; T=Float64, kwargs...) -> NoiseModel
 
 Factory function to create noise models based on type.
 
 # Examples
 ```julia
-# Diagonal noise
+# Diagonal noise (Float64 by default)
 diagonal_model = create_noise_model(:diagonal)
+
+# Diagonal noise with explicit type
+diagonal_model = create_noise_model(:diagonal, T=Float32)
 
 # Correlated noise
 corr_model = create_noise_model(:correlated, A=2.0, σ=5.0, N=128)
 ```
 """
-function create_noise_model(type::Symbol, args...; kwargs...)
+function create_noise_model(type::Symbol, args...; T::Type{<:AbstractFloat}=Float64, kwargs...)
     if type == :diagonal
-        return DiagonalNoise()
+        return DiagonalNoise{T}()
     elseif type == :correlated
         # Extract parameters from kwargs
-        A = Base.get(kwargs, :A, 1.0)
-        σ = Base.get(kwargs, :σ, 1.0) 
+        A = Base.get(kwargs, :A, one(T))
+        σ = Base.get(kwargs, :σ, one(T))
         N = Base.get(kwargs, :N, 128)
-        return CorrelatedNoise(A, σ, N)
+        return CorrelatedNoise(T(A), T(σ), N)
     else
         error("Unknown noise model type: $type")
     end
@@ -151,6 +154,28 @@ end
 # =============================================================================
 # 6. UTILITY FUNCTIONS
 # =============================================================================
+
+"""
+    with_weights(model::DiagonalNoise{T}, weights::AbstractArray{T}) -> DiagonalNoise{T}
+
+Create a new DiagonalNoise instance with the specified weights.
+Useful for adding weights to a model that was initially created without them.
+"""
+function with_weights(_::DiagonalNoise{T}, weights::AbstractArray{T}) where {T<:AbstractFloat}
+    return DiagonalNoise(weights)
+end
+
+"""
+    with_weights(model::DiagonalAndCorrelatedNoise{T}, weights::AbstractArray{T}) -> DiagonalAndCorrelatedNoise{T}
+
+Create a new DiagonalAndCorrelatedNoise instance with updated weights in the diagonal component.
+The correlated component remains unchanged.
+"""
+function with_weights(model::DiagonalAndCorrelatedNoise{T}, weights::AbstractArray{T}) where {T<:AbstractFloat}
+    updated_diag = DiagonalNoise(weights)
+    return DiagonalAndCorrelatedNoise(updated_diag, model.corr_noise)
+end
+
 function theoretical_variance(model::CorrelatedNoise)
     return model.A / (4π * model.σ^2)
 end
@@ -160,8 +185,8 @@ end
 
 Get the type of noise model as a symbol.
 """
-get_noise_type(::DiagonalNoise) = :diagonal
-get_noise_type(::CorrelatedNoise) = :correlated
+get_noise_type(::DiagonalNoise{T}) where {T} = :diagonal
+get_noise_type(::CorrelatedNoise{T}) where {T} = :correlated
 
 # =============================================================================
 # 7. VALIDATION AND TESTING
@@ -173,4 +198,160 @@ get_noise_type(::CorrelatedNoise) = :correlated
 function validate_noise_model(model::NoiseModel; kwargs...)
     @warn "Use include(\"noise_validation.jl\") to enable plotting validation functions"
     return nothing
+end
+
+# =============================================================================
+# 8. COVARIANCE APPLICATION - Multiply noise models with arrays
+# =============================================================================
+
+"""
+    toeplitz_convolve(img::AbstractMatrix, padded_kernel) -> Matrix
+
+Apply Toeplitz convolution using pre-computed FFT of kernel.
+Efficient convolution via FFT domain multiplication.
+For Toeplitz convolution, padded_kernel must have size (2H, 2W) for image size (H, W).
+"""
+function toeplitz_convolve(img::AbstractMatrix{T}, padded_kernel::AbstractMatrix{K}) where {T<:AbstractFloat, K}
+    H, W = size(img)
+    Ph, Pw = size(padded_kernel)
+    if Ph != 2*H || Pw != 2*W
+        throw(ArgumentError("padded_kernel must have size (2H,2W) for image size (H,W). Got $(Ph)x$(Pw) vs expected $(2*H)x$(2*W)."))
+    end
+
+    # Pad image to (2H, 2W)
+    P = similar(padded_kernel, Complex{promote_type(T, Float64)})
+    P .= 0
+    # Place real image in top-left corner
+    P[1:H, 1:W] .= complex.(img)
+
+    # FFT, multiply, IFFT
+    result_padded = ifft(fft(P) .* padded_kernel)
+    # Keep real part and crop
+    return real(result_padded[1:H, 1:W])
+end
+
+"""
+    apply_covariance(diag_noise::DiagonalNoise{T}, input_array, direct_model)
+
+Apply diagonal covariance matrix C = W^(-1) to input array.
+For diagonal noise: result = input / weights (element-wise).
+"""
+function apply_covariance(
+    diag_noise::DiagonalNoise{T},
+    input_array::AbstractArray{T,3},
+    _::DirectModel{T},  # Unused - kept for uniform interface
+) where {T<:AbstractFloat}
+    # For diagonal noise: C = diag(σ_i²) = W^(-1)
+    # Apply element-wise: result = x / W (since C = W^(-1))
+
+    if diag_noise.weights === nothing
+        throw(ArgumentError("DiagonalNoise does not contain weights. Cannot apply covariance. Use with_weights() to add weights first."))
+    end
+
+    return input_array ./ diag_noise.weights
+end
+
+"""
+    apply_covariance(noise_model::CorrelatedNoise, input_array, direct_model, [weights])
+
+Apply correlated covariance matrix C = B C_(δs) B^T to input array.
+Where C_(δs) = F^(-1) Λ F is the spatial correlation operator.
+
+# Process:
+1. Apply B^T (adjoint of direct model) to transform data to object space
+2. Apply spatial filter C_(δs) in Fourier domain using power spectrum
+3. Apply B (direct model) to transform back to data space
+"""
+function apply_covariance(
+    noise_model::CorrelatedNoise{T},
+    input_array::AbstractArray{T,3},
+    direct_model::DirectModel{T}
+) where {T<:AbstractFloat}
+
+    H, W2, n_frames = size(input_array)
+    if W2 % 2 != 0
+        throw(ArgumentError("Second dimension must be even (2W). Got $W2"))
+    end
+    W = div(W2, 2)
+
+    # Output array
+    out = zeros(T, H, W2, n_frames)
+
+    # Process each frame independently
+    # IMPORTANT: Must use full DirectModel (not individual TR[i]) to handle global operations
+    for frame_idx in 1:n_frames
+        # Step 1: Isolate current frame with zeros elsewhere (like Python)
+        # This allows DirectModel to apply correct per-frame B while preserving global operations
+        single_frame_image = zeros(T, H, W2, direct_model.rows[3])
+        single_frame_image[:, :, frame_idx] = input_array[:, :, frame_idx]
+
+        # Step 2: Apply B^T (adjoint of full DirectModel) to the isolated frame
+        # Transform from data space to object space
+        transposed_result = direct_model' * single_frame_image
+
+        # Step 3: Extract intensity component (assuming speckles are non-polarized)
+        # transposed_result is a PolarimetricMap
+        total_intensity = transposed_result.I
+
+        # Step 4: Apply spatial filter C_(δs) = F^(-1) Λ F in Fourier domain
+        filtered_intensity = toeplitz_convolve(total_intensity, noise_model.P_double)
+
+        # Step 5: Reconstruct Stokes parameters matching apply_direct_model format
+        # Build input_array format: [filtered_intensity, zeros, zeros]
+        # Apply same transformation as apply_direct_model:
+        # S = PolarimetricMap("intensities", input_array[1] - input_array[2], input_array[2], input_array[3])
+        zero_pol = zeros(T, size(filtered_intensity))
+        S_filtered = PolarimetricMap("intensities",
+                                     filtered_intensity .- zero_pol,  # input_array[1] - input_array[2]
+                                     zero_pol,                          # input_array[2]
+                                     zero_pol)                          # input_array[3]
+
+        # Step 6: Apply B (full DirectModel) to transform back to data space
+        reprojected = direct_model * S_filtered
+
+        # Step 7: Extract only the frame_idx channel from the result
+        out[:, :, frame_idx] = reprojected[:, :, frame_idx]
+    end
+
+    return out
+end
+
+"""
+    apply_covariance(noise_model::DiagonalAndCorrelatedNoise, input_array, direct_model, weights)
+
+Apply combined covariance matrix C = (B C_(δs) B^T + Σ_n) to input array.
+Sum of diagonal and correlated components.
+"""
+function apply_covariance(
+    noise_model::DiagonalAndCorrelatedNoise{T},
+    input_array::AbstractArray{T,3},
+    direct_model::DirectModel{T},
+) where {T<:AbstractFloat}
+
+    # Apply diagonal component: Σ_n * x
+    diag_result = apply_covariance( noise_model.diag_noise, input_array, direct_model )
+
+    # Apply correlated component: B C_(δs) B^T * x
+    corr_result = apply_covariance( noise_model.corr_noise, input_array, direct_model )
+
+    # Sum both components
+    return diag_result .+ corr_result
+end
+
+"""
+    apply_covariance(x::AbstractArray{T,3}, dataset::Dataset{T}) -> AbstractArray{T,3}
+
+Apply covariance matrix to input array using noise model from dataset.
+Dispatches to appropriate method based on noise model type.
+
+# Arguments
+- `x`: Input array (H × W × frames)
+- `dataset`: Dataset containing noise_model and direct_model
+"""
+function apply_covariance(
+    x::AbstractArray{T,3},
+    dataset::Dataset{T}
+) where {T<:AbstractFloat}
+    # Dispatch based on noise model type
+    return apply_covariance(dataset.noise_model, x, dataset.direct_model)
 end
