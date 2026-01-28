@@ -43,13 +43,19 @@ module RhapsodieDirect
         NoiseModel, DiagonalNoise, CorrelatedNoise, DiagonalAndCorrelatedNoise, create_noise_model, generate_noise, validate_noise_model,
         generate_correlated_noise,
         apply_covariance,
+        apply_precision,
         toeplitz_convolve,
+        apply_special_inverse_covariance,
+        apply_special_transform_inverse_covariance,
         with_weights,
         AbstractWeightOperator,
         DiagonalWeights,
         FourierPrecisionOperator,
         compute_polarization_inverse_matrix,
-        apply_direct_model_inverse_no_blur
+        apply_direct_model_inverse_no_blur,
+        #  PCG Solver
+        pcg,
+        pcg_solve_covariance
 
     import Base: +, -, *, /, ==, getindex, setindex!, read, write, convert, copy, fill!
 
@@ -71,5 +77,6 @@ module RhapsodieDirect
     include("datasimul_tools.jl")
     include("noise_models.jl")
     include("weight_operators.jl")
+    include("pcg_solver.jl")
 end
 

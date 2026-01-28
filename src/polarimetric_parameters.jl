@@ -204,7 +204,7 @@ Base.copy(X::PolarimetricMap{Float64}) = PolarimetricMap(X.parameter_type,
                                                          copy(X.Ip), 
                                                          copy(X.θ))
 
-function get(x::PolarimetricMap{Float64}, i::Int64)
+function Base.get(x::PolarimetricMap{Float64}, i::Int64)
     return eval(:($(x).$(MAPDICT[x.parameter_type][i])))
 end
 
