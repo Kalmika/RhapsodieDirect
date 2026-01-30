@@ -4,8 +4,213 @@
 
 using LinearAlgebra
 
+# =============================================================================
+# Pre-allocated workspace for zero-allocation PCG
+# =============================================================================
+
 """
-    pcg(apply_A, b; x0=nothing, rtol=1e-5, atol=0.0, maxiter=nothing, 
+    PCGWorkspace{T,N}
+
+Pre-allocated workspace for PCG iterations to minimize allocations.
+
+# Fields
+- `r`: Residual buffer
+- `y`: Preconditioned residual buffer
+- `p`: Search direction buffer
+- `Ap`: A * p buffer
+- `temp1`: Temporary buffer for apply_A operations
+- `temp2`: Temporary buffer for apply_M_inv operations
+"""
+struct PCGWorkspace{T<:AbstractFloat, N}
+    r::Array{T,N}      # Residual
+    y::Array{T,N}      # Preconditioned residual
+    p::Array{T,N}      # Search direction
+    Ap::Array{T,N}     # A * p
+    temp1::Array{T,N}  # Temporary buffer for apply_A
+    temp2::Array{T,N}  # Temporary buffer for apply_M_inv
+end
+
+"""
+    PCGWorkspace(shape, T=Float64)
+
+Create a PCGWorkspace with pre-allocated buffers of the given shape.
+
+# Example
+```julia
+ws = PCGWorkspace((128, 256, 4))  # For 3D arrays of size 128×256×4
+ws = PCGWorkspace((100,), Float32)  # For 1D arrays with Float32
+```
+"""
+function PCGWorkspace(shape::NTuple{N,Int}, ::Type{T}=Float64) where {T<:AbstractFloat, N}
+    return PCGWorkspace(
+        zeros(T, shape),
+        zeros(T, shape),
+        zeros(T, shape),
+        zeros(T, shape),
+        zeros(T, shape),
+        zeros(T, shape)
+    )
+end
+
+"""
+    PCGWorkspace(template::AbstractArray{T,N})
+
+Create a PCGWorkspace matching the size and type of the template array.
+"""
+function PCGWorkspace(template::AbstractArray{T,N}) where {T<:AbstractFloat, N}
+    return PCGWorkspace(size(template), T)
+end
+
+# =============================================================================
+# Zero-allocation PCG with in-place operations
+# =============================================================================
+
+"""
+    pcg_preallocated!(x, apply_A!, apply_M_inv!, b, workspace; kwargs...)
+
+Zero-allocation PCG solver using pre-allocated workspace.
+All operations are performed in-place to minimize memory allocations.
+
+# Arguments
+- `x`: Solution array (modified in-place). Should be initialized (e.g., zeros or warm start).
+- `apply_A!`: In-place function `apply_A!(out, in)` that computes `out = A * in`
+- `apply_M_inv!`: In-place function `apply_M_inv!(out, in)` that computes `out = M^{-1} * in`
+- `b`: Right-hand side array
+- `workspace`: Pre-allocated PCGWorkspace
+
+# Keyword Arguments
+- `rtol::Real`: Relative tolerance (default: 1e-5)
+- `atol::Real`: Absolute tolerance (default: 0.0)
+- `maxiter::Int`: Maximum iterations (default: 200)
+- `verbose::Bool`: Print convergence info (default: false)
+
+# Returns
+NamedTuple with fields:
+- `converged::Bool`: Whether the solver converged
+- `iterations::Int`: Number of iterations performed
+- `residual_norm::Float64`: Final residual norm
+
+# Example
+```julia
+# Pre-allocate workspace once
+ws = PCGWorkspace((128, 256, 4))
+
+# Create in-place operators
+apply_A!(out, x) = apply_covariance!(out, noise_model, x, direct_model)
+apply_M_inv!(out, x) = apply_preconditioner_inverse!(out, x, ...)
+
+# Solve (can be called many times with same workspace)
+x = zeros(128, 256, 4)
+info = pcg_preallocated!(x, apply_A!, apply_M_inv!, b, ws; rtol=1e-6)
+```
+"""
+function pcg_preallocated!(
+    x::AbstractArray{T,N},
+    apply_A!::Function,          # apply_A!(out, in) - in-place
+    apply_M_inv!::Function,      # apply_M_inv!(out, in) - in-place
+    b::AbstractArray{T,N},
+    ws::PCGWorkspace{T,N};
+    rtol::Real = 1e-5,
+    atol::Real = 0.0,
+    maxiter::Int = 200,
+    verbose::Bool = false
+) where {T<:AbstractFloat, N}
+
+    # Unpack workspace buffers
+    r, y, p, Ap = ws.r, ws.y, ws.p, ws.Ap
+
+    n = length(b)
+
+    # r_0 = A*x_0 - b
+    apply_A!(Ap, x)         # Ap used as temp here
+    @. r = Ap - b
+
+    r_norm = norm(r)
+    r0_norm = r_norm
+
+    # Tolerance: stop when ||r|| <= max(rtol * ||r_0||, atol)
+    tol = max(rtol * r0_norm, atol)
+
+    if verbose
+        println("PCG: Initial residual = $(r_norm)")
+    end
+
+    # Check if already converged
+    if r_norm <= tol
+        return (converged=true, iterations=0, residual_norm=r_norm)
+    end
+
+    # y_0 = M^{-1} * r_0
+    apply_M_inv!(y, r)
+
+    # p_0 = -y_0
+    @. p = -y
+
+    # rho = r^T * y
+    rho = dot(r, y)
+
+    k = 0
+
+    while k < maxiter
+        # Ap = A * p
+        apply_A!(Ap, p)
+
+        # alpha = rho / (p^T * Ap)
+        pAp = dot(p, Ap)
+
+        # Check for breakdown
+        if abs(pAp) < eps(T) * n
+            if verbose
+                println("PCG: Breakdown at iteration $k (p^T A p ≈ 0)")
+            end
+            break
+        end
+
+        alpha = rho / pAp
+
+        # x += alpha * p  (in-place)
+        @. x += alpha * p
+
+        # r += alpha * Ap  (in-place)
+        @. r += alpha * Ap
+
+        r_norm = norm(r)
+        k += 1
+
+        if verbose && (k % 10 == 0 || k == 1)
+            println("PCG: Iteration $k, residual = $(r_norm)")
+        end
+
+        # Check convergence
+        if r_norm <= tol
+            if verbose
+                println("PCG: CONVERGED after $k iterations, final residual = $(r_norm)")
+            end
+            return (converged=true, iterations=k, residual_norm=r_norm)
+        end
+
+        # y = M^{-1} * r  (in-place)
+        apply_M_inv!(y, r)
+
+        # beta = rho_new / rho
+        rho_new = dot(r, y)
+        beta = rho_new / rho
+
+        # p = -y + beta * p  (in-place)
+        @. p = -y + beta * p
+
+        rho = rho_new
+    end
+
+    if verbose
+        println("PCG: NOT CONVERGED after $k iterations, final residual = $(r_norm)")
+    end
+
+    return (converged=false, iterations=k, residual_norm=r_norm)
+end
+
+"""
+    pcg(apply_A, b; x0=nothing, rtol=1e-5, atol=0.0, maxiter=nothing,
         apply_M_inv=nothing, callback=nothing, verbose=false)
 
 Preconditioned Conjugate Gradient solver for symmetric positive definite systems.

@@ -55,7 +55,16 @@ module RhapsodieDirect
         apply_direct_model_inverse_no_blur,
         #  PCG Solver
         pcg,
-        pcg_solve_covariance
+        pcg_solve_covariance,
+        #  Optimized pre-allocated versions
+        PCGWorkspace,
+        pcg_preallocated!,
+        PrecomputedToeplitzFFT,
+        toeplitz_convolve!,
+        PrecisionWorkspace,
+        apply_special_transform_inverse_covariance!,
+        apply_precision_fast!,
+        create_precision_workspace
 
     import Base: +, -, *, /, ==, getindex, setindex!, read, write, convert, copy, fill!
 
@@ -75,8 +84,8 @@ module RhapsodieDirect
     include("utils.jl")
     include("loaders.jl")
     include("datasimul_tools.jl")
+    include("pcg_solver.jl")  # Must be before noise_models.jl (provides PCGWorkspace)
     include("noise_models.jl")
     include("weight_operators.jl")
-    include("pcg_solver.jl")
 end
 
