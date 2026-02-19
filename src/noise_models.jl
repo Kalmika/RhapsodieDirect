@@ -694,15 +694,16 @@ function apply_precision(
     direct_model::DirectModel{T};
     kwargs...  # Accept but ignore kwargs for interface consistency
 ) where {T<:AbstractFloat}
-    println("[apply_precision Diagonal] Called, input size=$(size(input_array))")
-    flush(stdout)
     if diag_noise.weights === nothing
-        throw(ArgumentError("DiagonalNoise does not contain weights. Cannot apply covariance. Use with_weights() to add weights first."))
+        throw(ArgumentError("DiagonalNoise does not contain weights. Cannot apply precision. Use with_weights() to add weights first."))
     end
+    # For diagonal noise: precision = weights (inverse of variances)
+    # Apply element-wise multiplication: result = input * weights
     result = input_array .* diag_noise.weights
-    println("[apply_precision Diagonal] Done")
-    flush(stdout)
-    return result
+
+    # Return tuple (result, info) for interface consistency with other noise models
+    info = (converged = true, iterations = 0, residual_norm = 0.0)
+    return result, info
 end
 
 """
@@ -731,10 +732,6 @@ function apply_precision(
     maxiter::Union{Nothing, Int} = nothing,
     verbose::Bool = false
 ) where {T<:AbstractFloat}
-    println("[apply_precision Correlated] Starting, input size=$(size(input_array))")
-    println("  additive_variance=$additive_variance, rtol=$rtol")
-    flush(stdout)
-
     # Use small regularization if none provided (for numerical stability)
     reg_variance = additive_variance !== nothing ? additive_variance : T(1e-10)
 
@@ -759,18 +756,14 @@ function apply_precision(
     end
 
     # Solve via PCG
-    println("[apply_precision Correlated] Starting PCG with reg_variance=$reg_variance")
-    flush(stdout)
     x_solution, info = pcg( apply_A, input_array; apply_M_inv = apply_M_inv, rtol = rtol, maxiter = maxiter, verbose = verbose )
-    # x_solution, info = pcg( apply_A, input_array; rtol = rtol, maxiter = maxiter, verbose = verbose )
-    println("[apply_precision Correlated] PCG done: converged=$(info.converged), iterations=$(info.iterations)")
-    flush(stdout)
 
     if verbose && !info.converged
         @warn "PCG did not converge in apply_precision for CorrelatedNoise" iterations=info.iterations final_residual=info.residual_norm
     end
 
-    return x_solution
+    # Return tuple (result, info) for interface consistency
+    return x_solution, info
 end
 
 """
