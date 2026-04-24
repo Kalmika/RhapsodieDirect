@@ -939,7 +939,8 @@ function apply_precision_fast!(
     additive_variance::Union{Nothing, T} = nothing,
     rtol::Real = 1e-5,
     maxiter::Int = 200,
-    verbose::Bool = false
+    verbose::Bool = false,
+    error_on_non_convergence::Bool = false
 ) where {T<:AbstractFloat}
 
     # Use workspace's internal weighted_residual buffer
@@ -1007,7 +1008,11 @@ function apply_precision_fast!(
     end
 
     if !info.converged
-        @warn "PCG did not converge in apply_precision_fast!" iterations=info.iterations final_residual=info.residual_norm
+        if error_on_non_convergence
+            error("PCG did not converge in apply_precision_fast! iterations=$(info.iterations), final_residual=$(info.residual_norm)")
+        else
+            @warn "PCG did not converge in apply_precision_fast!" iterations=info.iterations final_residual=info.residual_norm
+        end
     end
 
     return info
