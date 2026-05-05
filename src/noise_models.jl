@@ -21,7 +21,7 @@ Generate one realization of correlated noise using FFT method.
 """
 function generate_correlated_noise(model::CorrelatedNoise)
     white_noise = randn(model.N, model.N)
-    fourier_noise = fft(white_noise)
+    fourier_noise = fft(white_noise) # TODO: remove ?
     filtered_noise = fourier_noise .* model.sqrt_P
     return real.(ifft(filtered_noise))
 end

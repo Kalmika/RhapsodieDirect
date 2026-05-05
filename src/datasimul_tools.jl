@@ -177,11 +177,16 @@ function data_simulator(Good_Pix::AbstractArray{T,2},
 	return data, weights
 end
 
+# Data et readput_noise sont dans la même unité (U par exemple)
+# Le gain est en U / electron
+# U peut être des ADU.
+# TODO, ajouter le gain ?
 function compute_weights_and_add_noise!(data::AbstractArray{T,N1}, 
                                       good_pixels::AbstractArray{T,N2}, 
-                                      ro_noise::Real) where {T<:AbstractFloat,N1,N2}
+                                      ro_noise::Real,
+                                      gain::Real = 1.0) where {T<:AbstractFloat,N1,N2}
     # Compute variance: max(signal, 0) + readout_noise²
-    VAR = max.(data, zero(eltype(data))) .+ ro_noise^2    
+    VAR = gain * max.(data, zero(eltype(data))) .+ ro_noise^2    
     # Compute weights: good_pixels / variance
     weights = good_pixels ./ VAR    
     add_noise_with_masking!(data, weights)
@@ -192,7 +197,8 @@ end
 function add_noise_with_masking!(data::AbstractArray{T,N}, weights::AbstractArray{T,N};bad=zero(T)) where {T<:AbstractFloat,N}   
     @inbounds for i in eachindex(data, weights)
         (isfinite(weights[i]) && weights[i] >= 0 ) || error("invalid weights")
-        if weights[i] >0            
+        if weights[i] >0  
+            # Revient à faire randn() * sqrt(VAR[i])           
             data[i] += randn()/sqrt(weights[i])    
         elseif weights[i] ==0 
             data[i]=bad;
