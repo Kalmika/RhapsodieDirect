@@ -279,8 +279,8 @@ end
 
 Container for observational data with associated noise model and direct model.
 """
-struct Dataset{T<:AbstractFloat, N<:NoiseModel, H<:DirectModel{T}}
-    data::AbstractArray{T,3}
+struct Dataset{T<:AbstractFloat, N<:NoiseModel, H<:DirectModel{T}, D<:AbstractArray{T,3}}
+    data::D
     noise_model::N
     direct_model::H
 
