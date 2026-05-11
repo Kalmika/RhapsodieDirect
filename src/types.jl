@@ -289,7 +289,7 @@ struct Dataset{T<:AbstractFloat, N<:NoiseModel, H<:DirectModel{T}, D<:AbstractAr
         noise_model::NoiseModel,
         direct_model::H
     ) where {T, H<:DirectModel{T}}
-        new{T, typeof(noise_model), H}(data, noise_model, direct_model)
+        new{T, typeof(noise_model), H, typeof(data)}(data, noise_model, direct_model)
     end
 end
 
