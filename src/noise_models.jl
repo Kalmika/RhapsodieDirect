@@ -686,20 +686,27 @@ end
 Apply diagonal precision matrix W = C^(-1) to input array.
 For diagonal noise: result = input * weights (element-wise).
 
-Note: kwargs are accepted for interface consistency but ignored for diagonal noise.
+# Keyword Arguments
+- `additive_variance::Union{Nothing, Real}`: Tikhonov term λ. If given and non-zero,
+  applies (C + λI)^(-1), i.e. weights w / (1 + λ w) per pixel (default: nothing)
+
+Other kwargs are accepted for interface consistency but ignored for diagonal noise.
 """
 function apply_precision(
     diag_noise::DiagonalNoise{T},
     input_array::AbstractArray{T,3},
     direct_model::DirectModel{T};
-    kwargs...  # Accept but ignore kwargs for interface consistency
+    additive_variance::Union{Nothing, Real} = nothing,
+    kwargs...  # Accept but ignore other kwargs for interface consistency
 ) where {T<:AbstractFloat}
     if diag_noise.weights === nothing
         throw(ArgumentError("DiagonalNoise does not contain weights. Cannot apply precision. Use with_weights() to add weights first."))
     end
     # For diagonal noise: precision = weights (inverse of variances)
-    # Apply element-wise multiplication: result = input * weights
-    result = input_array .* diag_noise.weights
+    w = diag_noise.weights
+    # (C + λI)^(-1) = w / (1 + λ w) per pixel; dead pixels (w = 0) stay at 0
+    result = (additive_variance === nothing || iszero(additive_variance)) ? input_array .* w :
+             input_array .* (w ./ (one(T) .+ T(additive_variance) .* w))
 
     # Return tuple (result, info) for interface consistency with other noise models
     info = (converged = true, iterations = 0, residual_norm = 0.0)
